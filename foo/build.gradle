@@ -5,3 +5,13 @@ myConfig {
     outputs << [fooOne: 'foo1.txt']
     outputs << [fooTwo: 'foo2.txt']
 }
+
+File foo1File = new File("fooOne.txt")
+
+artifacts {
+    //myOutputs {
+        //name 'my-foo-1-file'
+        //type 'text'
+        //builtBy myBuild
+    //}
+}

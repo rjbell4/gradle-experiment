@@ -25,8 +25,14 @@ public class MyBuild extends DefaultTask {
     @InputFiles
     public FileCollection getBuildInputs() {
         println "DEBUG: Asking for inputs for $project"
-        FileCollection inputs = project.files(project.myConfig.deps.collect { depName -> project.rootProject.allMyOutputs[depName] })
-        inputs.each { println "       $it " + objectID(it) }
+        FileCollection inputs = project.files(project.myConfig.deps.collect { depName ->
+            def dep = project.rootProject.allMyOutputs[depName]
+            println "       DEP: $dep " + objectID(dep)
+            return dep
+        })
+        println "INPUTS == $inputs"
+        //inputs.each { println "       $it " + objectID(it) }
+        println "Returning inputs"
         return inputs
     }
 
@@ -34,7 +40,11 @@ public class MyBuild extends DefaultTask {
     public FileCollection getBuildOutputs() {
         println "DEBUG: Asking for outputs of $project"
         FileCollection outputs = project.files(project.myConfig.outputs.values())
-        outputs.files.each { println "       $it " + objectID(it) }
+        //outputs.files.each { println "       $it " + objectID(it) }
+        println "       Task dependencies:"
+        outputs.buildDependencies.getDependencies(this).each { println "         $it " + objectID(it) }
+        println "OUTPUTS == $outputs"
+        println "Returning outputs"
         return outputs
     }
 }
@@ -54,7 +64,7 @@ class MyPlugin implements Plugin<Project> {
         println "DEBUG: Applying MyPlugin to project $project"
 
         // Add task automatically
-        project.task("myBuild", type: MyBuild) {
+        def buildTask = project.task("myBuild", type: MyBuild) {
             group = "MyStuff"
             description = "Sample build task"
         }
@@ -71,11 +81,16 @@ class MyPlugin implements Plugin<Project> {
                 println "DEBUG: Output filename: $name ==> $filename"
                 File file = project.files(filename).singleFile
                 println "       File: $file " + objectID(file)
-                project.myConfig.outputs[name] = file
+
+                def artf = project.artifacts.add("myOutputs", [file: file, name: name, type: 'text', builtBy: buildTask])
+                project.myConfig.outputs[name] = artf
+                println "       Artifact: $artf " + objectID(artf)
             }
 
             // Add to a global map of all outputs, so that inputs can be connected later
             project.rootProject.allMyOutputs += project.myConfig.outputs
+
+            println "====> ARTIFACTS: " + project.configurations.myOutputs.allArtifacts
         }
     }
 }
@@ -86,3 +101,8 @@ if (!rootProject.ext.has('allMyOutputs'))
 
 // Apply the defined plugin
 apply plugin: MyPlugin
+
+// All project have a myOutputs configuration
+configurations {
+    myOutputs
+}
