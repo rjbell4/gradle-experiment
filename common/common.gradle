@@ -1,0 +1,88 @@
+println "DEBUG: Processing common Gradle file"
+
+public class MyBuild extends DefaultTask {
+    String objectID(Object obj) {
+        '[' + obj.class.name + '@' + Integer.toHexString(obj.hashCode()) + ']'
+    }
+
+    @TaskAction
+    void build() {
+        println "Executing the build action for $project"
+
+        // TODO Use task.outputs?
+        project.files(project.myConfig.outputs.values()).each { output ->
+            println "Creating output file $output"
+            output.text = new Date()
+            project.myConfig.deps.each { depName ->
+                println "Pulling in dependency named $depName"
+                def depFile = project.rootProject.allMyOutputs[depName]
+                println "    Dependency == $depFile " + objectID(depFile)
+                output.text += "\n$depName :: " + depFile.text
+            }
+        }
+    }
+
+    @InputFiles
+    public FileCollection getBuildInputs() {
+        println "Asking for inputs for $project"
+        FileCollection inputs = project.files(project.myConfig.deps.collect { depName -> project.rootProject.allMyOutputs[depName] })
+        inputs.each { println "    $it " + objectID(it) }
+        return inputs
+    }
+
+    @OutputFiles
+    public FileCollection getBuildOutputs() {
+        println "Asking for outputs of $project"
+        FileCollection outputs = project.files(project.myConfig.outputs.values())
+        outputs.files.each { println "    $it " + objectID(it) }
+        return outputs
+    }
+}
+
+// Class to use as configuration
+class MyConfig {
+    List<String> deps = []      // Dependencies identified by name
+    Map outputs = [:]           // Outputs organized by name and filename (later replaced by File object)
+}
+
+class MyPlugin implements Plugin<Project> {
+    String objectID(Object obj) {
+        '[' + obj.class.name + '@' + Integer.toHexString(obj.hashCode()) + ']'
+    }
+
+    void apply(Project project) {
+        println "Applying MyPlugin to project $project"
+
+        // Add task automatically
+        project.task("myBuild", type: MyBuild) {
+            group = "MyStuff"
+            description = "Sample build task"
+        }
+
+        // Add configuration class
+        project.extensions.add("myConfig", MyConfig);
+
+        // Process output after configuration has been defined
+        project.afterEvaluate {
+            println "Project $project has been evaluated"
+
+            // Replace filenames with File objects
+            project.myConfig.outputs.each { name, filename ->
+                println "Output filename: $name ==> $filename"
+                File file = project.files(filename).singleFile
+                println "    File: $file " + objectID(file)
+                project.myConfig.outputs[name] = file
+            }
+
+            // Add to a global map of all outputs, so that inputs can be connected later
+            project.rootProject.allMyOutputs += project.myConfig.outputs
+        }
+    }
+}
+
+// For the first project, initialize empty map of all outputs
+if (!rootProject.ext.has('allMyOutputs'))
+    rootProject.ext.allMyOutputs = [:]
+
+// Apply the defined plugin
+apply plugin: MyPlugin

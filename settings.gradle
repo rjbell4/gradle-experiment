@@ -1,0 +1,6 @@
+println "DEBUG: Include settings"
+
+include 'foo'
+include 'bar'
+
+println "DEBUG: Subprojects have been included"
