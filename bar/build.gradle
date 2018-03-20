@@ -1,9 +1,5 @@
 apply from: '../common/common.gradle'
 
-configurations {
-    myOutputs
-}
-
 myConfig {
     outputs << [barOne: 'bar1.txt']
     outputs << [barTwo: 'bar2.txt']

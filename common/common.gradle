@@ -1,22 +1,18 @@
 println "DEBUG: Processing common Gradle file"
 
 public class MyBuild extends DefaultTask {
-    String objectID(Object obj) {
-        '[' + obj.class.name + '@' + Integer.toHexString(obj.hashCode()) + ']'
-    }
-
     @TaskAction
     void build() {
         println "DEBUG: Executing the build action for $project"
 
         // Dummy build action -- put the date and dependency content into each output file
         this.outputs.files.each { output ->
-            println "       Creating output file $output"
+            println "Creating output file $output"
             output.text = new Date()
             project.myConfig.deps.each { depName ->
-                println "         Pulling in dependency named $depName"
-                def depFile = project.rootProject.allMyOutputs[depName]
-                println "         Dependency == $depFile " + objectID(depFile)
+                println "  Pulling in dependency named $depName"
+                def depFile = project.rootProject.allMyOutputs[depName].file
+                println "  Dependency == ${depFile.dump()}"
                 output.text += "\n$depName :: " + depFile.text
             }
         }
@@ -24,42 +20,31 @@ public class MyBuild extends DefaultTask {
 
     @InputFiles
     public FileCollection getBuildInputs() {
-        println "DEBUG: Asking for inputs for $project"
-        FileCollection inputs = project.files(project.myConfig.deps.collect { depName ->
+        // Iterate through each input, so that the dependency on the originating task can be maintained
+        FileCollection inputs = project.files([])
+        project.myConfig.deps.each { depName ->
             def dep = project.rootProject.allMyOutputs[depName]
-            println "       DEP: $dep " + objectID(dep)
-            return dep
-        })
-        println "INPUTS == $inputs"
-        //inputs.each { println "       $it " + objectID(it) }
-        println "Returning inputs"
+            FileCollection depFC = project.files(dep.file) {
+                builtBy dep.buildDependencies
+            }
+            inputs += depFC
+        }
         return inputs
     }
 
     @OutputFiles
     public FileCollection getBuildOutputs() {
-        println "DEBUG: Asking for outputs of $project"
-        FileCollection outputs = project.files(project.myConfig.outputs.values())
-        //outputs.files.each { println "       $it " + objectID(it) }
-        println "       Task dependencies:"
-        outputs.buildDependencies.getDependencies(this).each { println "         $it " + objectID(it) }
-        println "OUTPUTS == $outputs"
-        println "Returning outputs"
-        return outputs
+        return project.files(project.myConfig.outputs.values()*.file)
     }
 }
 
 // Class to use as configuration
 class MyConfig {
     List<String> deps = []      // Dependencies identified by name
-    Map outputs = [:]           // Outputs organized by name and filename (later replaced by File object)
+    Map outputs = [:]           // Outputs identified by name and relative filename
 }
 
 class MyPlugin implements Plugin<Project> {
-    String objectID(Object obj) {
-        '[' + obj.class.name + '@' + Integer.toHexString(obj.hashCode()) + ']'
-    }
-
     void apply(Project project) {
         println "DEBUG: Applying MyPlugin to project $project"
 
@@ -78,19 +63,15 @@ class MyPlugin implements Plugin<Project> {
 
             // Replace filenames with File objects
             project.myConfig.outputs.each { name, filename ->
-                println "DEBUG: Output filename: $name ==> $filename"
                 File file = project.files(filename).singleFile
-                println "       File: $file " + objectID(file)
 
                 def artf = project.artifacts.add("myOutputs", [file: file, name: name, type: 'text', builtBy: buildTask])
                 project.myConfig.outputs[name] = artf
-                println "       Artifact: $artf " + objectID(artf)
+                println "DEBUG: Artifact == " + artf.dump()
             }
 
             // Add to a global map of all outputs, so that inputs can be connected later
             project.rootProject.allMyOutputs += project.myConfig.outputs
-
-            println "====> ARTIFACTS: " + project.configurations.myOutputs.allArtifacts
         }
     }
 }
