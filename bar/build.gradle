@@ -1,6 +1,6 @@
 apply from: '../common/common.gradle'
 
 myConfig {
-    outputs << [barOne: 'bar1.txt']
-    outputs << [barTwo: 'bar2.txt']
+    buildOutputs << [barOne: 'bar1.txt']
+    buildOutputs << [barTwo: 'bar2.txt']
 }

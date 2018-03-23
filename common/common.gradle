@@ -1,77 +1,63 @@
-println "DEBUG: Processing common Gradle file"
-
+@CacheableTask
 public class MyBuild extends DefaultTask {
     @TaskAction
     void build() {
         println "DEBUG: Executing the build action for $project"
 
-        // Dummy build action -- put the date and dependency content into each output file
-        this.outputs.files.each { output ->
+        // Dummy build action -- put the path and dependency content into each output file
+        outputs.files.each { output ->
             println "Creating output file $output"
-            output.text = new Date()
-            project.myConfig.deps.each { depName ->
-                println "  Pulling in dependency named $depName"
-                def depFile = project.rootProject.allMyOutputs[depName].file
-                println "  Dependency == ${depFile.dump()}"
-                output.text += "\n$depName :: " + depFile.text
+            output.text = output.path
+            buildInputs.each { dep ->
+                def depFile = dep.get().asFile
+                println "  Pulling in dependency named ${depFile.path}"
+                output.text += "\n" + depFile.text
             }
         }
     }
 
     @InputFiles
-    public FileCollection getBuildInputs() {
-        // Iterate through each input, so that the dependency on the originating task can be maintained
-        FileCollection inputs = project.files([])
-        project.myConfig.deps.each { depName ->
-            def dep = project.rootProject.allMyOutputs[depName]
-            FileCollection depFC = project.files(dep.file) {
-                builtBy dep.buildDependencies
-            }
-            inputs += depFC
-        }
-        return inputs
+    public List<RegularFileProperty> getBuildInputs() {
+        return project.myConfig.buildDeps.collect { project.rootProject.allMyOutputs[it] }
     }
 
     @OutputFiles
-    public FileCollection getBuildOutputs() {
-        return project.files(project.myConfig.outputs.values()*.file)
+    public Map<String,RegularFileProperty> getBuildOutputs() {
+        return project.buildOutputProps
     }
 }
 
 // Class to use as configuration
 class MyConfig {
-    List<String> deps = []      // Dependencies identified by name
-    Map outputs = [:]           // Outputs identified by name and relative filename
+    List<String> buildDeps = []  // Dependencies identified by name
+    Map buildOutputs = [:]       // Outputs identified by name and relative filename
 }
 
 class MyPlugin implements Plugin<Project> {
     void apply(Project project) {
-        println "DEBUG: Applying MyPlugin to project $project"
-
-        // Add task automatically
-        def buildTask = project.task("myBuild", type: MyBuild) {
-            group = "MyStuff"
-            description = "Sample build task"
-        }
-
-        // Add configuration class
-        project.extensions.add("myConfig", MyConfig);
-
-        // Process output after configuration has been defined
-        project.afterEvaluate {
-            println "DEBUG: Project $project has been evaluated"
-
-            // Replace filenames with File objects
-            project.myConfig.outputs.each { name, filename ->
-                File file = project.files(filename).singleFile
-
-                def artf = project.artifacts.add("myOutputs", [file: file, name: name, type: 'text', builtBy: buildTask])
-                project.myConfig.outputs[name] = artf
-                println "DEBUG: Artifact == " + artf.dump()
+        project.with {
+            // Add task automatically
+            def buildTask = task("myBuild", type: MyBuild) {
+                group = "MyStuff"
+                description = "Sample build task"
             }
 
-            // Add to a global map of all outputs, so that inputs can be connected later
-            project.rootProject.allMyOutputs += project.myConfig.outputs
+            // Add configuration class
+            extensions.add("myConfig", MyConfig);
+
+            // Process output after configuration has been defined
+            ext.buildOutputProps = [:]
+            afterEvaluate {
+                // Build map with properties, instead of filename
+                myConfig.buildOutputs.each { name, filename ->
+                    RegularFileProperty prop = buildTask.newOutputFile()
+                    prop.set(layout.buildDirectory.file(filename))
+                    buildOutputProps[name] = prop
+                }
+
+                // Add to a global map of all outputs, so that inputs can be connected later
+                rootProject.allMyOutputs += buildOutputProps
+            }
         }
     }
 }
@@ -82,8 +68,3 @@ if (!rootProject.ext.has('allMyOutputs'))
 
 // Apply the defined plugin
 apply plugin: MyPlugin
-
-// All project have a myOutputs configuration
-configurations {
-    myOutputs
-}

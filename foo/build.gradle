@@ -1,7 +1,7 @@
 apply from: '../common/common.gradle'
 
 myConfig {
-    deps << "barTwo"
-    outputs << [fooOne: 'foo1.txt']
-    outputs << [fooTwo: 'foo2.txt']
+    buildDeps << "barTwo"
+    buildOutputs << [fooOne: 'foo1.txt']
+    buildOutputs << [fooTwo: 'foo2.txt']
 }
