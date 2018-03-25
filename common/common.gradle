@@ -8,7 +8,7 @@ public class MyBuild extends DefaultTask {
         outputs.files.each { output ->
             println "Creating output file $output"
             output.text = output.path
-            buildInputs.each { dep ->
+            this.getBuildInputs().each { dep ->
                 def depFile = dep.get().asFile
                 println "  Pulling in dependency named ${depFile.path}"
                 output.text += "\n" + depFile.text
@@ -18,7 +18,7 @@ public class MyBuild extends DefaultTask {
 
     @InputFiles
     public List<RegularFileProperty> getBuildInputs() {
-        return project.myConfig.buildDeps.collect { project.rootProject.allMyOutputs[it] }
+        return project.buildInputProps.collect { k,v -> v }
     }
 
     @OutputFiles
@@ -45,26 +45,35 @@ class MyPlugin implements Plugin<Project> {
             // Add configuration class
             extensions.add("myConfig", MyConfig);
 
-            // Process output after configuration has been defined
+            // Process inputs and outputs after configuration has been defined
             ext.buildOutputProps = [:]
             afterEvaluate {
-                // Build map with properties, instead of filename
+                // Build map with property for each file
                 myConfig.buildOutputs.each { name, filename ->
-                    RegularFileProperty prop = buildTask.newOutputFile()
-                    prop.set(layout.buildDirectory.file(filename))
-                    buildOutputProps[name] = prop
+                    buildOutputProps[name] = buildTask.newOutputFile()
+                    buildOutputProps[name].set(layout.buildDirectory.file(filename))
                 }
 
                 // Add to a global map of all outputs, so that inputs can be connected later
+                if (!rootProject.ext.has('allMyOutputs'))
+                    rootProject.ext.allMyOutputs = [:]
                 rootProject.allMyOutputs += buildOutputProps
+
+                // Build map with properties for inputs, to be latter matched to outputs
+                ext.buildInputProps = myConfig.buildDeps.collectEntries { [(it): buildTask.newInputFile()] }
             }
         }
     }
 }
 
-// For the first project, initialize empty map of all outputs
-if (!rootProject.ext.has('allMyOutputs'))
-    rootProject.ext.allMyOutputs = [:]
+// Map the inputs to outputs once all projects has been evaluated
+gradle.projectsEvaluated {
+    buildInputProps.each { name, input ->
+        if (!rootProject.allMyOutputs.containsKey(name))
+            throw new GradleException("The build of project ${project.name} references \"$name\" as an input, but it is never defined as an output by any project")
+        buildInputProps[name] = rootProject.allMyOutputs[name]
+    }
+}
 
 // Apply the defined plugin
 apply plugin: MyPlugin
