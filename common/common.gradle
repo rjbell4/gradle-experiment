@@ -9,7 +9,7 @@ public class MyBuild extends DefaultTask {
             println "Creating output file $output"
             output.text = output.path
             buildInputs.each { dep ->
-                def depFile = dep.get().asFile
+                def depFile = dep.get().get().asFile
                 println "  Pulling in dependency named ${depFile.path}"
                 output.text += "\n" + depFile.text
             }
@@ -17,14 +17,32 @@ public class MyBuild extends DefaultTask {
     }
 
     @InputFiles
-    public List<RegularFileProperty> getBuildInputs() {
-        return project.myConfig.buildDeps.collect { project.rootProject.allMyOutputs[it] }
+    public List<MyFileProvider> getBuildInputs() {
+        return project.buildInputProviders
     }
 
     @OutputFiles
     public Map<String,RegularFileProperty> getBuildOutputs() {
         return project.buildOutputProps
     }
+}
+
+// Delayed resolution of a name of a dependecy to a RegularFileProperty,
+// allowing it to be mentioned before it is defined
+class MyFileProvider implements Provider<RegularFileProperty> {
+    String name
+    Map map
+
+    public MyFileProvider(String name, Map map) {
+        this.name = name
+        this.map = map
+    }
+
+    public RegularFileProperty get() { return map[name] }
+    public RegularFileProperty getOrNull() { return isPresent() ? get() : null }
+    public RegularFileProperty getOrElse(RegularFileProperty defaultProp) { return isPresent() ? get() : defaultProp }
+    public boolean isPresent() { return map.exists(name) }
+    public Provider map(Transformer transformer) { return null }
 }
 
 // Class to use as configuration
@@ -48,11 +66,13 @@ class MyPlugin implements Plugin<Project> {
             // Process output after configuration has been defined
             ext.buildOutputProps = [:]
             afterEvaluate {
+                // Build list of inputs, which can be resolved later
+                ext.buildInputProviders = myConfig.buildDeps.collect { new MyFileProvider(it, rootProject.allMyOutputs) }
+
                 // Build map with properties, instead of filename
                 myConfig.buildOutputs.each { name, filename ->
-                    RegularFileProperty prop = buildTask.newOutputFile()
-                    prop.set(layout.buildDirectory.file(filename))
-                    buildOutputProps[name] = prop
+                    buildOutputProps[name] = buildTask.newOutputFile()
+                    buildOutputProps[name].set(layout.buildDirectory.file(filename))
                 }
 
                 // Add to a global map of all outputs, so that inputs can be connected later
