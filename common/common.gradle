@@ -5,15 +5,24 @@ public class MyBuild extends DefaultTask {
         println "DEBUG: Executing the build action for $project"
 
         // Dummy build action -- put the path and dependency content into each output file
-        outputs.files.each { output ->
-            println "Creating output file $output"
-            output.text = output.path
-            this.getBuildInputs().each { dep ->
-                def depFile = dep.get().asFile
+        buildOutputs.each { outName, output ->
+            File file = output.get().asFile
+            println "Creating output file ${file}"
+            if (project.hasProperty("${outName}_content"))
+                file.text = project.property("${outName}_content")
+            else
+                file.text = file.path
+            project.buildInputProps.each { inName, input ->
+                def depFile = input.get().asFile
                 println "  Pulling in dependency named ${depFile.path}"
-                output.text += "\n" + depFile.text
+                file.text += "\n${inName} :: ${depFile.text}"
             }
         }
+    }
+
+    @Input
+    public List<String> getInputProperties() {
+        return project.buildOutputProps.keySet().collect { project.hasProperty("${it}_content") ? project.property("${it}_content") : null }
     }
 
     @InputFiles
